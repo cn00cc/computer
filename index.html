@@ -200,11 +200,24 @@
 
             document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
             try {
-                const promptText = `你是一個精通台灣市場行情的即時比價專家。請先辨識圖片中的商品品牌、完整名稱與型號，並務必使用 Google 搜尋查詢「2026年台灣最新售價」（包含 momo、PChome、原價屋、欣亞、蝦皮售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
+                const cleanKey = apiKey.replace(/\s+/g, '');
+                const promptText = `你是一個精通台灣市場行情的即時比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並使用 Google 搜尋查詢「台灣最新售價」（包含 momo、PChome、原價屋、欣亞、蝦皮售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
 請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：
 {"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明查到的通路最新售價依據"}`;
 
-                const models = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-3.8-flash-lite"];
+                let models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview"];
+                try {
+                    const listUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models?key="].join("") + cleanKey;
+                    const listRes = await fetch(listUrl);
+                    if (listRes.ok) {
+                        const listData = await listRes.json();
+                        const valid = (listData.models || [])
+                            .filter(m => m.supportedGenerationMethods?.includes("generateContent") && m.name.includes("flash") && !m.name.includes("image") && !m.name.includes("audio"))
+                            .map(m => m.name.replace("models/", ""));
+                        if (valid.length > 0) models = valid.slice(0, 4);
+                    }
+                } catch (e) {}
+
                 let data = null;
                 let lastError = "";
 
@@ -212,10 +225,10 @@
                     const model = models.at(i);
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 12000);
+                    const timeoutId = setTimeout(() => controller.abort(), 18000);
 
                     try {
-                        const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
+                        const response = await fetch(baseUrl + cleanKey, {
                             method: 'POST',
                             signal: controller.signal,
                             headers: { 'Content-Type': 'application/json' },
@@ -224,7 +237,7 @@
                                 tools: [{ googleSearch: {} }],
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: 350
+                                    maxOutputTokens: 2048
                                 }
                             })
                         });
@@ -257,7 +270,7 @@
                 const parsed = JSON.parse(jsonMatch.at(0));
                 const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.9));
                 const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.7));
-                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依 2026 台灣即時搜尋行情估算", userPrice);
+                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依台灣即時搜尋行情估算", userPrice);
             } catch (err) {
                 alert(`辨識失敗：${err.message}`);
             } finally {
@@ -265,7 +278,7 @@
                 document.getElementById('submit-btn').style.display = 'block';
             }
         }
-         function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
+        function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
             const diff = userPrice - marketPrice;
             const percent = Math.round((diff / marketPrice) * 100);
             const bobaCount = Math.floor(Math.abs(diff) / 65);
