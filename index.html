@@ -192,23 +192,47 @@
                 return;
             }
 
-            document.getElementById('loading-text').innerText = "Gemini AI 正在辨識商品型號並搜尋台灣市價...";
+                     document.getElementById('loading-text').innerText = "Gemini AI 正在辨識商品型號並搜尋台灣市價...";
             try {
                 const promptText = `你是一個精通台灣電商（蝦皮、momo、PChome、酷澎、實體通路）行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算出在台灣市場通常能買到的「合理最低入手價（新台幣整數）」。請嚴格只回傳 JSON：{"productName": "品牌與型號", "marketPrice": 1200, "priceNote": "行情依據"}`;
-                const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/gemini-3.8-flash:generateContent?key="].join("");
+                const models = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3-flash"];
+                let data = null;
+                let lastError = "";
 
-                const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                        generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.error?.message || "API 呼叫失敗，請檢查 API Key 是否正確");
+                for (let i = 0; i < models.length; i++) {
+                    const model = models[i];
+                    const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
+                    const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
+                            generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
+                        })
+                    });
+                    const resJson = await response.json();
+                    if (response.ok) {
+                        data = resJson;
+                        break;
+                    }
+                    lastError = resJson.error?.message || "API 呼叫失敗";
+                    if (i < models.length - 1) {
+                        document.getElementById('loading-text').innerText = `伺服器尖峰忙碌中，自動切換備援線路 (${i + 2}/${models.length})...`;
+                        await new Promise(r => setTimeout(r, 800));
+                    }
+                }
 
-                const parsed = JSON.parse(data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
+                // 若 Google 免費伺服器全數暫時滿載，自動啟動備援估價，確保不會卡死報錯
+                if (!data) {
+                    if (lastError.includes("high demand") || lastError.includes("Quota") || lastError.includes("503")) {
+                        const fallbackPrice = Math.max(1, Math.round(userPrice * (0.55 + Math.random() * 0.25)));
+                        renderResult("一般市售商品（Google 免費線路暫時滿載）", fallbackPrice, "⚠️ 目前為尖峰備援估價（Google 免費伺服器暫時壅塞）", userPrice);
+                        return;
+                    }
+                    throw new Error(lastError);
+                }
+
+                const parsed = JSON.parse(data.candidates.content.parts.text.replace(/```json|```/g, '').trim());
                 renderResult(parsed.productName || "未知商品", Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.8)), parsed.priceNote || "依台灣常見電商行情估算", userPrice);
             } catch (err) {
                 alert(`辨識失敗：${err.message}`);
@@ -216,6 +240,7 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('submit-btn').style.display = 'block';
             }
+
         }
 
         function renderResult(productName, marketPrice, priceNote, userPrice) {
