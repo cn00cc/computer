@@ -103,7 +103,7 @@
         <button onclick="copyShareText()" id="copy-btn" class="btn-copy">📋 複製鑑定結果文案（貼群組嘲諷）</button>
         <button onclick="resetForm()" class="btn-reset">再鑑定下一個商品 🔄</button>
     </section>
-               <script>
+         <script>
         const BUILTIN_API_KEY = ["AQ.Ab8RN6I5ZO7yE7t", "XnL9K6u_91jQQu7y", "APj5P2sNc4xxrtTrGmw"].join("");
 
         let compressedBase64 = "";
@@ -152,29 +152,24 @@
             document.getElementById('submit-btn').style.display = 'none';
             document.getElementById('result-card').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
-            document.getElementById('loading-text').innerText = "🔍 正在即時聯網比對台灣最新市價...";
+            document.getElementById('loading-text').innerText = "🔍 AI 正在精算台灣通路與二手行情...";
 
             try {
-                const promptText = "請辨識圖片中的商品品牌、完整名稱與型號，並透過搜尋查詢台灣目前（2026年）電商（如 momo、PChome、原價屋）的「全新最低市價」與 PTT/蝦皮「二手行情價」（皆為新台幣整數）。請嚴格只回傳純 JSON，不要加任何說明或 Markdown 符號：{\"productName\":\"品牌與完整型號\",\"marketPrice\":16290,\"usedPrice\":11500,\"priceNote\":\"註明實際查到的參考通路與行情\"}";
+                const promptText = "你是一個精通台灣市場行情的比價專家。請精準辨識圖片中的商品品牌、完整名稱與型號，並根據台灣（2026年）實際含稅零售行情（momo、PChome、原價屋、官方定價，請務必計入台灣代理商定價與營業稅，切勿直接用美金 MSRP 換算低估，例如 ASUS RTX 5060 8GB 台灣全新市價約 16290 元、二手約 11500 元），估算「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數）。請嚴格只回傳純 JSON 物件：{\"productName\":\"品牌與完整型號\",\"marketPrice\":16290,\"usedPrice\":11500,\"priceNote\":\"註明參考通路與台灣行情依據\"}";
 
-                const callGemini = async (model, useSearch, timeoutMs) => {
+                const callGemini = async (model, timeoutMs) => {
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent"].join("");
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-                    const genConfig = {
-                        temperature: 0.1,
-                        maxOutputTokens: 1024
-                    };
-                    if (!useSearch) {
-                        genConfig.responseMimeType = "application/json";
-                    }
-
                     const payload = {
                         contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                        generationConfig: genConfig
+                        generationConfig: {
+                            temperature: 0.1,
+                            maxOutputTokens: 1024,
+                            responseMimeType: "application/json"
+                        }
                     };
-                    if (useSearch) payload.tools = [{ googleSearch: {} }];
 
                     try {
                         const res = await fetch(baseUrl, {
@@ -202,17 +197,16 @@
                     return /\{[\s\S]*\}/.test(txt);
                 };
 
-                // 第 1 步：用最輕量的 gemini-3.5-flash-lite 搭配即時聯網搜尋（兼顧速度與真實價格）
-                let result = await callGemini("gemini-3.5-flash-lite", true, 12000);
-                let modeLabel = "（即時聯網查價）";
+                // 第 1 步：直接使用高精準度的標準版 gemini-3.5-flash 精算台灣含稅市價
+                let result = await callGemini("gemini-3.5-flash", 14000);
+                let modeLabel = "（AI 台灣行情庫精算）";
 
-                // 第 2 步：若搜尋額度已滿或逾時，秒切純視覺庫保底
+                // 第 2 步：若標準版額度達上限，秒切輕量版 gemini-3.5-flash-lite 備援
                 if (!hasValidJson(result)) {
-                    document.getElementById('loading-text').innerText = "⚡ 切換 AI 資料庫極速估價...";
-                    result = await callGemini("gemini-3.5-flash-lite", false, 8000);
-                    modeLabel = "（AI 行情庫估算）";
+                    document.getElementById('loading-text').innerText = "⚡ 切換極速備援模型估算中...";
+                    result = await callGemini("gemini-3.5-flash-lite", 10000);
+                    modeLabel = "（AI 極速備援估算）";
                 }
-
 
                 if (!hasValidJson(result)) {
                     const errMsg = result.json.error?.message || "免費額度暫時耗盡，請約 1 分鐘後再試";
