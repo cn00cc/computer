@@ -196,7 +196,7 @@
             document.getElementById('loading-text').innerText = "Gemini AI 正在辨識商品型號並搜尋台灣市價...";
             try {
                 const promptText = `你是一個精通台灣電商（蝦皮、momo、PChome、酷澎、實體通路）行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算出在台灣市場通常能買到的「合理最低入手價（新台幣整數）」。請嚴格只回傳 JSON：{"productName": "品牌與型號", "marketPrice": 1200, "priceNote": "行情依據"}`;
-                const response = await fetch(`https://googleapis.com{encodeURIComponent(apiKey)}`, {
+               const response = await fetch("https://googleapis.com" + encodeURIComponent(apiKey), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
