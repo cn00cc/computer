@@ -62,7 +62,7 @@
                 <input type="password" id="gemini-api-key" placeholder="貼上你的 Gemini API Key">
                 <button type="button" class="btn-save-key" onclick="saveApiKey()">儲存</button>
             </div>
-            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可即時聯網搜尋台灣最新市價與二手行情。</p>
+            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可即時查詢台灣最新市價與二手行情。</p>
         </details>
         <div class="form-group">
             <label>1. 拍下商品或上傳照片</label>
@@ -201,68 +201,59 @@
             document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
             try {
                 const cleanKey = apiKey.replace(/\s+/g, '');
-                const promptText = `你是一個精通台灣市場行情的即時比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並使用 Google 搜尋查詢「台灣最新售價」（包含 momo、PChome、原價屋、欣亞、蝦皮售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
+                const promptText = `你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 RTX 5060 全新約 16290、二手約 11500）。
 請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：
-{"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明查到的通路最新售價依據"}`;
+{"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明參考通路與行情依據"}`;
 
-                let models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview"];
-                try {
-                    const listUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models?key="].join("") + cleanKey;
-                    const listRes = await fetch(listUrl);
-                    if (listRes.ok) {
-                        const listData = await listRes.json();
-                        const valid = (listData.models || [])
-                            .filter(m => m.supportedGenerationMethods?.includes("generateContent") && m.name.includes("flash") && !m.name.includes("image") && !m.name.includes("audio"))
-                            .map(m => m.name.replace("models/", ""));
-                        if (valid.length > 0) models = valid.slice(0, 4);
-                    }
-                } catch (e) {}
-
-                let data = null;
-                let lastError = "";
-
-                for (let i = 0; i < models.length; i++) {
-                    const model = models.at(i);
+                const callGemini = async (model, useSearch) => {
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 18000);
+                    const timeoutId = setTimeout(() => controller.abort(), 14000);
+                    const payload = {
+                        contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
+                        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+                    };
+                    if (useSearch) payload.tools = [{ googleSearch: {} }];
 
                     try {
-                        const response = await fetch(baseUrl + cleanKey, {
+                        const res = await fetch(baseUrl + cleanKey, {
                             method: 'POST',
                             signal: controller.signal,
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                                tools: [{ googleSearch: {} }],
-                                generationConfig: {
-                                    temperature: 0.1,
-                                    maxOutputTokens: 2048
-                                }
-                            })
+                            body: JSON.stringify(payload)
                         });
                         clearTimeout(timeoutId);
-                        const resJson = await response.json();
-                        if (response.ok && resJson.candidates?.at(0)?.content?.parts) {
-                            data = resJson;
-                            break;
-                        }
-                        lastError = resJson.error?.message || "線路暫時無回應";
+                        const json = await res.json();
+                        return { ok: res.ok, json };
                     } catch (e) {
                         clearTimeout(timeoutId);
-                        lastError = e.name === "AbortError" ? "搜尋超時" : e.message;
+                        return { ok: false, json: { error: { message: e.message } } };
                     }
+                };
 
-                    if (i < models.length - 1) {
-                        document.getElementById('loading-text').innerText = `🔍 切換備援搜尋線路 (${i + 2}/${models.length})...`;
-                    }
+                // 第 1 步：優先嘗試即時聯網搜尋（僅呼叫 1 次，節省額度）
+                let result = await callGemini("gemini-2.5-flash", true);
+                let modeLabel = "（即時聯網查價）";
+
+                // 第 2 步：若搜尋額度已達上限，自動切換為高速純視覺模型估價
+                if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
+                    document.getElementById('loading-text').innerText = "⚡ 搜尋額度已滿，自動切換 AI 資料庫極速估價...";
+                    result = await callGemini("gemini-2.5-flash", false);
+                    modeLabel = "（AI 行情庫估算）";
                 }
 
-                if (!data) {
-                    throw new Error(`無法取得即時報價（${lastError}），請再按一次鑑定試試！`);
+                // 第 3 步：若仍受限，切換輕量版模型
+                if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
+                    result = await callGemini("gemini-2.5-flash-lite", false);
+                    modeLabel = "（AI 輕量庫估算）";
                 }
 
-                const parts = data.candidates.at(0).content.parts;
+                if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
+                    const errMsg = result.json.error?.message || "免費額度暫時耗盡，請約 1 分鐘後再試";
+                    throw new Error(errMsg);
+                }
+
+                const parts = result.json.candidates.at(0).content.parts;
                 const fullText = parts.map(p => p.text || "").join("\n");
                 const jsonMatch = fullText.match(/\{[\s\S]*?\}/);
                 if (!jsonMatch) throw new Error("AI 回傳格式異常，請再試一次");
@@ -270,7 +261,7 @@
                 const parsed = JSON.parse(jsonMatch.at(0));
                 const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.9));
                 const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.7));
-                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依台灣即時搜尋行情估算", userPrice);
+                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, (parsed.priceNote || "依台灣市場行情估算") + modeLabel, userPrice);
             } catch (err) {
                 alert(`辨識失敗：${err.message}`);
             } finally {
