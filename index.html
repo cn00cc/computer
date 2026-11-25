@@ -53,7 +53,7 @@
 <body>
     <header>
         <h1>🍽️ 盤子鑑定機</h1>
-        <p>拍照秒查全新市價與二手行情，看看你朋友是不是大慈善家</p>
+        <p>拍照即時聯網查全新市價與二手行情，看看誰是大慈善家</p>
     </header>
     <main class="card">
         <details class="api-settings" id="api-details">
@@ -62,7 +62,7 @@
                 <input type="password" id="gemini-api-key" placeholder="貼上你的 Gemini API Key">
                 <button type="button" class="btn-save-key" onclick="saveApiKey()">儲存</button>
             </div>
-            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可秒速辨識商品並同時估算台灣全新市價與二手行情。</p>
+            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可即時聯網搜尋台灣最新市價與二手行情。</p>
         </details>
         <div class="form-group">
             <label>1. 拍下商品或上傳照片</label>
@@ -87,7 +87,7 @@
     </main>
     <div id="loading" class="loading">
         <div class="spinner"></div>
-        <p id="loading-text">⚡ AI 正在秒速比對全新市價與二手行情...</p>
+        <p id="loading-text">🔍 正在即時聯網搜尋台灣最新報價與二手行情...</p>
     </div>
     <section id="result-card" class="result-card">
         <div class="result-header">
@@ -147,7 +147,7 @@
         }
 
         function previewImage(event) {
-            const file = event.target.files[0];
+            const file = event.target.files.item(0);
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -163,7 +163,7 @@
                     canvas.width = width; canvas.height = height;
                     canvas.getContext('2d').drawImage(img, 0, 0, width, height);
                     const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                    compressedBase64 = compressedDataUrl.split(',')[1];
+                    compressedBase64 = compressedDataUrl.split(',').at(1);
                     const preview = document.getElementById('image-preview');
                     preview.src = compressedDataUrl;
                     preview.style.display = 'block';
@@ -198,20 +198,21 @@
                 return;
             }
 
-                        document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
+            document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
             try {
-                const promptText = `你是一個精通台灣市場行情的即時比價專家。請先辨識圖片中的商品品牌、完整名稱與型號，並務必使用 Google 搜尋查詢「2026年台灣最新售價」（包含原價屋、欣亞、蝦皮、momo、PChome 售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
+                const promptText = `你是一個精通台灣市場行情的即時比價專家。請先辨識圖片中的商品品牌、完整名稱與型號，並務必使用 Google 搜尋查詢「2026年台灣最新售價」（包含 momo、PChome、原價屋、欣亞、蝦皮售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
 請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：
-{"productName":"品牌與完整型號","marketPrice":12000,"usedPrice":8500,"priceNote":"註明查到的通路最新售價依據"}`;
+{"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明查到的通路最新售價依據"}`;
 
                 const models = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-3.8-flash-lite"];
                 let data = null;
+                let lastError = "";
 
                 for (let i = 0; i < models.length; i++) {
-                    const model = models[i];
+                    const model = models.at(i);
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 9000); // 聯網搜尋需要約 3-6 秒，放寬至 9 秒
+                    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
                     try {
                         const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
@@ -220,21 +221,23 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                                tools: [{ googleSearch: {} }], // 關鍵：開啟 Google 搜尋即時查價
+                                tools: [{ googleSearch: {} }],
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: 300
+                                    maxOutputTokens: 350
                                 }
                             })
                         });
                         clearTimeout(timeoutId);
                         const resJson = await response.json();
-                        if (response.ok && resJson.candidates?.[0]?.content?.parts) {
+                        if (response.ok && resJson.candidates?.at(0)?.content?.parts) {
                             data = resJson;
                             break;
                         }
+                        lastError = resJson.error?.message || "線路暫時無回應";
                     } catch (e) {
                         clearTimeout(timeoutId);
+                        lastError = e.name === "AbortError" ? "搜尋超時" : e.message;
                     }
 
                     if (i < models.length - 1) {
@@ -243,19 +246,15 @@
                 }
 
                 if (!data) {
-                    const fallbackNew = Math.max(1, Math.round(userPrice * 0.85));
-                    const fallbackUsed = Math.max(1, Math.round(fallbackNew * 0.7));
-                    renderResult("一般市售商品（離線備援模式）", fallbackNew, fallbackUsed, "⚠️ 即時搜尋線路暫時壅塞，已啟動備援估價", userPrice);
-                    return;
+                    throw new Error(`無法取得即時報價（${lastError}），請再按一次鑑定試試！`);
                 }
 
-                // 合併所有回傳文字片段並精準擷取 JSON
-                const parts = data.candidates[0].content.parts;
+                const parts = data.candidates.at(0).content.parts;
                 const fullText = parts.map(p => p.text || "").join("\n");
                 const jsonMatch = fullText.match(/\{[\s\S]*?\}/);
-                if (!jsonMatch) throw new Error("無法解析比價格式，請再試一次");
+                if (!jsonMatch) throw new Error("AI 回傳格式異常，請再試一次");
 
-                const parsed = JSON.parse(jsonMatch[0]);
+                const parsed = JSON.parse(jsonMatch.at(0));
                 const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.9));
                 const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.7));
                 renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依 2026 台灣即時搜尋行情估算", userPrice);
@@ -265,9 +264,8 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('submit-btn').style.display = 'block';
             }
-
         }
-        function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
+         function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
             const diff = userPrice - marketPrice;
             const percent = Math.round((diff / marketPrice) * 100);
             const bobaCount = Math.floor(Math.abs(diff) / 65);
