@@ -244,7 +244,7 @@
 
                 // 第 3 步：若仍受限，切換輕量版模型
                 if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
-                    result = await callGemini("gemini-2.5-flash-lite", false);
+                    result = await callGemini("gemini-3.5-flash-lite", false);
                     modeLabel = "（AI 輕量庫估算）";
                 }
 
