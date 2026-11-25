@@ -103,7 +103,7 @@
         <button onclick="copyShareText()" id="copy-btn" class="btn-copy">📋 複製鑑定結果文案（貼群組嘲諷）</button>
         <button onclick="resetForm()" class="btn-reset">再鑑定下一個商品 🔄</button>
     </section>
-       <script>
+           <script>
         const BUILTIN_API_KEY = ["AQ.Ab8RN6I5ZO7yE7t", "XnL9K6u_91jQQu7y", "APj5P2sNc4xxrtTrGmw"].join("");
 
         let compressedBase64 = "";
@@ -155,27 +155,21 @@
             document.getElementById('loading-text').innerText = "⚡ AI 正在極速比對台灣最新行情...";
 
             try {
-                const promptText = "你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 iPhone 17 Pro 256G 全新約 36900、二手約 28500）。請直接回傳純 JSON 物件，包含四個欄位：productName（字串，品牌與完整型號）、marketPrice（數字，全新最低市價）、usedPrice（數字，二手行情價）、priceNote（字串，參考通路與行情依據）。";
+                const promptText = "你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 小米 55吋 Mini LED 智慧顯示器 全新約 12111、二手約 8500）。請直接回傳純 JSON 物件，包含四個欄位：productName（字串，品牌與完整型號）、marketPrice（數字，全新最低市價）、usedPrice（數字，二手行情價）、priceNote（字串，參考通路與行情依據）。";
 
-                const callGemini = async (model, useSearch, timeoutMs) => {
+                const callGemini = async (model, timeoutMs) => {
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent"].join("");
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-                    
-                    const genConfig = {
-                        temperature: 0.1,
-                        maxOutputTokens: 1024,
-                        thinkingConfig: { thinkingBudget: 0 }
-                    };
-                    if (!useSearch) {
-                        genConfig.responseMimeType = "application/json";
-                    }
 
                     const payload = {
                         contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                        generationConfig: genConfig
+                        generationConfig: {
+                            temperature: 0.1,
+                            maxOutputTokens: 1024,
+                            responseMimeType: "application/json"
+                        }
                     };
-                    if (useSearch) payload.tools = [{ googleSearch: {} }];
 
                     try {
                         const res = await fetch(baseUrl, {
@@ -192,7 +186,8 @@
                         return { ok: res.ok, json };
                     } catch (e) {
                         clearTimeout(timeoutId);
-                        return { ok: false, json: { error: { message: e.message } } };
+                        const msg = e.name === 'AbortError' ? '連線逾時，網路較慢請再試一次' : e.message;
+                        return { ok: false, json: { error: { message: msg } } };
                     }
                 };
 
@@ -202,14 +197,14 @@
                     return /\{[\s\S]*\}/.test(txt);
                 };
 
-                 // 第 1 步：直接呼叫最快的輕量視覺模型（約 1.5 ~ 3 秒秒出結果）
-                let result = await callGemini("gemini-3.5-flash-lite", false, 6000);
+                // 第 1 步：呼叫輕量視覺模型（給予充足的 15 秒回應時間）
+                let result = await callGemini("gemini-3.5-flash-lite", 15000);
                 let modeLabel = "（AI 極速行情庫）";
 
-                // 第 2 步：若輕量版額度受限，才改用標準版 gemini-3.5-flash
+                // 第 2 步：若輕量版失敗，切換標準版 gemini-3.5-flash
                 if (!hasValidJson(result)) {
                     document.getElementById('loading-text').innerText = "🔍 切換標準 AI 資料庫精算中...";
-                    result = await callGemini("gemini-3.5-flash", false, 7000);
+                    result = await callGemini("gemini-3.5-flash", 15000);
                     modeLabel = "（AI 標準行情庫）";
                 }
 
