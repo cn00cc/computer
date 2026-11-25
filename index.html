@@ -103,7 +103,7 @@
         <button onclick="copyShareText()" id="copy-btn" class="btn-copy">📋 複製鑑定結果文案（貼群組嘲諷）</button>
         <button onclick="resetForm()" class="btn-reset">再鑑定下一個商品 🔄</button>
     </section>
-           <script>
+               <script>
         const BUILTIN_API_KEY = ["AQ.Ab8RN6I5ZO7yE7t", "XnL9K6u_91jQQu7y", "APj5P2sNc4xxrtTrGmw"].join("");
 
         let compressedBase64 = "";
@@ -152,24 +152,29 @@
             document.getElementById('submit-btn').style.display = 'none';
             document.getElementById('result-card').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
-            document.getElementById('loading-text').innerText = "⚡ AI 正在極速比對台灣最新行情...";
+            document.getElementById('loading-text').innerText = "🔍 正在即時聯網比對台灣最新市價...";
 
             try {
-                const promptText = "你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 小米 55吋 Mini LED 智慧顯示器 全新約 12111、二手約 8500）。請直接回傳純 JSON 物件，包含四個欄位：productName（字串，品牌與完整型號）、marketPrice（數字，全新最低市價）、usedPrice（數字，二手行情價）、priceNote（字串，參考通路與行情依據）。";
+                const promptText = "請辨識圖片中的商品品牌、完整名稱與型號，並透過搜尋查詢台灣目前（2026年）電商（如 momo、PChome、原價屋）的「全新最低市價」與 PTT/蝦皮「二手行情價」（皆為新台幣整數）。請嚴格只回傳純 JSON，不要加任何說明或 Markdown 符號：{\"productName\":\"品牌與完整型號\",\"marketPrice\":16290,\"usedPrice\":11500,\"priceNote\":\"註明實際查到的參考通路與行情\"}";
 
-                const callGemini = async (model, timeoutMs) => {
+                const callGemini = async (model, useSearch, timeoutMs) => {
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent"].join("");
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+                    const genConfig = {
+                        temperature: 0.1,
+                        maxOutputTokens: 1024
+                    };
+                    if (!useSearch) {
+                        genConfig.responseMimeType = "application/json";
+                    }
+
                     const payload = {
                         contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                        generationConfig: {
-                            temperature: 0.1,
-                            maxOutputTokens: 1024,
-                            responseMimeType: "application/json"
-                        }
+                        generationConfig: genConfig
                     };
+                    if (useSearch) payload.tools = [{ googleSearch: {} }];
 
                     try {
                         const res = await fetch(baseUrl, {
@@ -186,7 +191,7 @@
                         return { ok: res.ok, json };
                     } catch (e) {
                         clearTimeout(timeoutId);
-                        const msg = e.name === 'AbortError' ? '連線逾時，網路較慢請再試一次' : e.message;
+                        const msg = e.name === 'AbortError' ? '連線逾時，請再試一次' : e.message;
                         return { ok: false, json: { error: { message: msg } } };
                     }
                 };
@@ -197,16 +202,17 @@
                     return /\{[\s\S]*\}/.test(txt);
                 };
 
-                // 第 1 步：呼叫輕量視覺模型（給予充足的 15 秒回應時間）
-                let result = await callGemini("gemini-3.5-flash-lite", 15000);
-                let modeLabel = "（AI 極速行情庫）";
+                // 第 1 步：用最輕量的 gemini-3.5-flash-lite 搭配即時聯網搜尋（兼顧速度與真實價格）
+                let result = await callGemini("gemini-3.5-flash-lite", true, 12000);
+                let modeLabel = "（即時聯網查價）";
 
-                // 第 2 步：若輕量版失敗，切換標準版 gemini-3.5-flash
+                // 第 2 步：若搜尋額度已滿或逾時，秒切純視覺庫保底
                 if (!hasValidJson(result)) {
-                    document.getElementById('loading-text').innerText = "🔍 切換標準 AI 資料庫精算中...";
-                    result = await callGemini("gemini-3.5-flash", 15000);
-                    modeLabel = "（AI 標準行情庫）";
+                    document.getElementById('loading-text').innerText = "⚡ 切換 AI 資料庫極速估價...";
+                    result = await callGemini("gemini-3.5-flash-lite", false, 8000);
+                    modeLabel = "（AI 行情庫估算）";
                 }
+
 
                 if (!hasValidJson(result)) {
                     const errMsg = result.json.error?.message || "免費額度暫時耗盡，請約 1 分鐘後再試";
