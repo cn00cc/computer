@@ -57,12 +57,12 @@
     </header>
     <main class="card">
         <details class="api-settings" id="api-details">
-            <summary id="api-status-text">⚙️ Gemini AI 真實辨識設定（未設定，目前為模擬模式）</summary>
+            <summary id="api-status-text">⚙️ Gemini AI 真實辨識設定（載入中...）</summary>
             <div class="api-input-group">
-                <input type="password" id="gemini-api-key" placeholder="貼上你的 Gemini API Key">
+                <input type="password" id="gemini-api-key" placeholder="貼上自訂 Gemini API Key（留空則使用內建金鑰）">
                 <button type="button" class="btn-save-key" onclick="saveApiKey()">儲存</button>
             </div>
-            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可即時查詢台灣最新市價與二手行情。</p>
+            <p class="api-hint">已內建預設金鑰，若額度耗盡可在此貼上你自己的 Google AI Studio API Key 覆蓋。</p>
         </details>
         <div class="form-group">
             <label>1. 拍下商品或上傳照片</label>
@@ -118,32 +118,52 @@
         <button onclick="resetForm()" class="btn-reset">再鑑定下一個商品 🔄</button>
     </section>
     <script>
+        const BUILTIN_API_KEY = "AQ.Ab8RN6LNPz2QIC0RDw5HDUQcNwC0sTO2Ork5LtNIs7OdAIrrzw";
+
         let compressedBase64 = "";
         let latestShareText = "";
+
+        function getActiveApiKey() {
+            const customKey = localStorage.getItem('gemini_api_key');
+            if (customKey && customKey.trim()) return customKey.trim();
+            if (BUILTIN_API_KEY && BUILTIN_API_KEY.trim()) return BUILTIN_API_KEY.trim();
+            return "";
+        }
+
+        function updateApiStatusUI() {
+            const statusEl = document.getElementById('api-status-text');
+            const customKey = localStorage.getItem('gemini_api_key');
+            if (customKey && customKey.trim()) {
+                statusEl.innerText = "✅ Gemini AI 真實辨識已就緒（使用自訂金鑰）";
+                statusEl.style.color = "#34d399";
+            } else if (BUILTIN_API_KEY && BUILTIN_API_KEY.trim()) {
+                statusEl.innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
+                statusEl.style.color = "#34d399";
+            } else {
+                statusEl.innerText = "⚙️ Gemini AI 真實辨識設定（未設定，目前為模擬模式）";
+                statusEl.style.color = "#94a3b8";
+            }
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('gemini_api_key');
             if (savedKey) {
                 document.getElementById('gemini-api-key').value = savedKey;
-                document.getElementById('api-status-text').innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
-                document.getElementById('api-status-text').style.color = "#34d399";
             }
+            updateApiStatusUI();
         });
 
         function saveApiKey() {
             const key = document.getElementById('gemini-api-key').value.trim();
             if (key) {
                 localStorage.setItem('gemini_api_key', key);
-                document.getElementById('api-status-text').innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
-                document.getElementById('api-status-text').style.color = "#34d399";
                 document.getElementById('api-details').removeAttribute('open');
-                alert('API Key 已儲存至本機瀏覽器！');
+                alert('自訂 API Key 已儲存！');
             } else {
                 localStorage.removeItem('gemini_api_key');
-                document.getElementById('api-status-text').innerText = "⚙️ Gemini AI 真實辨識設定（未設定，目前為模擬模式）";
-                document.getElementById('api-status-text').style.color = "#94a3b8";
-                alert('已清除 API Key，切換回模擬模式。');
+                alert('已清除自訂金鑰，恢復使用內建預設金鑰。');
             }
+            updateApiStatusUI();
         }
 
         function previewImage(event) {
@@ -177,7 +197,7 @@
         async function analyzeItem() {
             const imageInput = document.getElementById('image-input');
             const userPrice = parseFloat(document.getElementById('user-price').value);
-            const apiKey = document.getElementById('gemini-api-key').value.trim();
+            const apiKey = getActiveApiKey();
 
             if (!imageInput.files.length || !compressedBase64) return alert('請先拍一張照片或上傳圖片！');
             if (!userPrice || userPrice <= 0) return alert('請輸入有效的購買金額！');
@@ -231,23 +251,22 @@
                     }
                 };
 
-                // 第 1 步：優先嘗試即時聯網搜尋（僅呼叫 1 次，節省額度）
-                let result = await callGemini("gemini-2.5-flash", true);
+                // 第 1 步：優先使用新版 gemini-3.5-flash 搭配即時聯網搜尋
+                let result = await callGemini("gemini-3.5-flash", true);
                 let modeLabel = "（即時聯網查價）";
 
                 // 第 2 步：若搜尋額度已達上限，自動切換為高速純視覺模型估價
                 if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
                     document.getElementById('loading-text').innerText = "⚡ 搜尋額度已滿，自動切換 AI 資料庫極速估價...";
-                    result = await callGemini("gemini-2.5-flash", false);
+                    result = await callGemini("gemini-3.5-flash", false);
                     modeLabel = "（AI 行情庫估算）";
                 }
 
-                // 第 3 步：若仍受限，切換輕量版模型
+                // 第 3 步：若仍受限，切換新版輕量模型 gemini-3.5-flash-lite
                 if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
                     result = await callGemini("gemini-3.5-flash-lite", false);
                     modeLabel = "（AI 輕量庫估算）";
                 }
-
                 if (!result.ok || !result.json.candidates?.at(0)?.content?.parts) {
                     const errMsg = result.json.error?.message || "免費額度暫時耗盡，請約 1 分鐘後再試";
                     throw new Error(errMsg);
@@ -269,6 +288,7 @@
                 document.getElementById('submit-btn').style.display = 'block';
             }
         }
+
         function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
             const diff = userPrice - marketPrice;
             const percent = Math.round((diff / marketPrice) * 100);
