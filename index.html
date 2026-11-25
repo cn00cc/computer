@@ -11,12 +11,6 @@
         header h1 { font-size: 28px; font-weight: 900; color: #fbbf24; letter-spacing: 1px; }
         header p { color: #94a3b8; font-size: 14px; margin-top: 6px; }
         .card { width: 100%; max-width: 420px; background-color: #1e293b; border-radius: 16px; padding: 24px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4); }
-        .api-settings { margin-bottom: 18px; background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; font-size: 13px; }
-        .api-settings summary { cursor: pointer; color: #94a3b8; font-weight: bold; user-select: none; }
-        .api-input-group { display: flex; gap: 8px; margin-top: 10px; }
-        .api-input-group input { flex: 1; background-color: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 8px 10px; color: #ffffff; font-size: 12px; outline: none; }
-        .btn-save-key { background-color: #334155; color: #fbbf24; border: 1px solid #475569; border-radius: 8px; padding: 0 12px; font-size: 12px; font-weight: bold; cursor: pointer; }
-        .api-hint { font-size: 11px; color: #64748b; margin-top: 6px; line-height: 1.4; }
         .form-group { margin-bottom: 20px; }
         label { display: block; font-size: 14px; font-weight: bold; color: #cbd5e1; margin-bottom: 8px; }
         .upload-box { border: 2px dashed #475569; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; background-color: rgba(15, 23, 42, 0.5); }
@@ -56,14 +50,6 @@
         <p>拍照即時聯網查全新市價與二手行情，看看誰是大慈善家</p>
     </header>
     <main class="card">
-        <details class="api-settings" id="api-details">
-            <summary id="api-status-text">⚙️ Gemini AI 真實辨識設定（載入中...）</summary>
-            <div class="api-input-group">
-                <input type="password" id="gemini-api-key" placeholder="貼上自訂 Gemini API Key（留空則使用內建金鑰）">
-                <button type="button" class="btn-save-key" onclick="saveApiKey()">儲存</button>
-            </div>
-            <p class="api-hint">已內建預設金鑰，若額度耗盡可在此貼上你自己的 Google AI Studio API Key 覆蓋。</p>
-        </details>
         <div class="form-group">
             <label>1. 拍下商品或上傳照片</label>
             <div class="upload-box" onclick="document.getElementById('image-input').click()">
@@ -123,48 +109,10 @@
         let compressedBase64 = "";
         let latestShareText = "";
 
-        function getActiveApiKey() {
-            const customKey = localStorage.getItem('gemini_api_key');
-            if (customKey && customKey.trim()) return customKey.trim();
-            if (BUILTIN_API_KEY && BUILTIN_API_KEY.trim()) return BUILTIN_API_KEY.trim();
-            return "";
-        }
-
-        function updateApiStatusUI() {
-            const statusEl = document.getElementById('api-status-text');
-            const customKey = localStorage.getItem('gemini_api_key');
-            if (customKey && customKey.trim()) {
-                statusEl.innerText = "✅ Gemini AI 真實辨識已就緒（使用自訂金鑰）";
-                statusEl.style.color = "#34d399";
-            } else if (BUILTIN_API_KEY && BUILTIN_API_KEY.trim()) {
-                statusEl.innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
-                statusEl.style.color = "#34d399";
-            } else {
-                statusEl.innerText = "⚙️ Gemini AI 真實辨識設定（未設定，目前為模擬模式）";
-                statusEl.style.color = "#94a3b8";
-            }
-        }
-
+        // 啟動時自動清除舊的自訂金鑰快取，確保一律使用內建金鑰
         window.addEventListener('DOMContentLoaded', () => {
-            const savedKey = localStorage.getItem('gemini_api_key');
-            if (savedKey) {
-                document.getElementById('gemini-api-key').value = savedKey;
-            }
-            updateApiStatusUI();
+            localStorage.removeItem('gemini_api_key');
         });
-
-        function saveApiKey() {
-            const key = document.getElementById('gemini-api-key').value.trim();
-            if (key) {
-                localStorage.setItem('gemini_api_key', key);
-                document.getElementById('api-details').removeAttribute('open');
-                alert('自訂 API Key 已儲存！');
-            } else {
-                localStorage.removeItem('gemini_api_key');
-                alert('已清除自訂金鑰，恢復使用內建預設金鑰。');
-            }
-            updateApiStatusUI();
-        }
 
         function previewImage(event) {
             const file = event.target.files.item(0);
@@ -197,7 +145,7 @@
         async function analyzeItem() {
             const imageInput = document.getElementById('image-input');
             const userPrice = parseFloat(document.getElementById('user-price').value);
-            const apiKey = getActiveApiKey();
+            const cleanKey = BUILTIN_API_KEY.replace(/\s+/g, '');
 
             if (!imageInput.files.length || !compressedBase64) return alert('請先拍一張照片或上傳圖片！');
             if (!userPrice || userPrice <= 0) return alert('請輸入有效的購買金額！');
@@ -205,26 +153,13 @@
             document.getElementById('submit-btn').style.display = 'none';
             document.getElementById('result-card').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
-
-            if (!apiKey) {
-                document.getElementById('loading-text').innerText = "⚡ 模擬極速比價中...";
-                setTimeout(() => {
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('submit-btn').style.display = 'block';
-                    const mockNew = Math.max(1, Math.round(userPrice * 0.75));
-                    const mockUsed = Math.max(1, Math.round(mockNew * 0.65));
-                    renderResult("測試商品（尚未設定 API Key）", mockNew, mockUsed, "目前為模擬估算（設定金鑰可查真實市價與二手價）", userPrice);
-                }, 600);
-                return;
-            }
-
             document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
+
             try {
-                const cleanKey = apiKey.replace(/\s+/g, '');
                 const promptText = "你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 RTX 5060 全新約 16290、二手約 11500）。請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：{\"productName\":\"品牌與完整型號\",\"marketPrice\":16290,\"usedPrice\":11500,\"priceNote\":\"註明參考通路與行情依據\"}";
 
                 const callGemini = async (model, useSearch) => {
-                    const baseUrl = "https://googleapis.com" + model + ":generateContent";
+                    const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent"].join("");
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 14000);
                     const payload = {
