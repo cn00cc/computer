@@ -221,12 +221,10 @@
             document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
             try {
                 const cleanKey = apiKey.replace(/\s+/g, '');
-                const promptText = `你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 RTX 5060 全新約 16290、二手約 11500）。
-請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：
-{"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明參考通路與行情依據"}`;
+                const promptText = "你是一個精通台灣市場行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算台灣市場的「全新最低入手價」與「品項良好二手行情價」（皆為新台幣整數，例如 RTX 5060 全新約 16290、二手約 11500）。請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：{\"productName\":\"品牌與完整型號\",\"marketPrice\":16290,\"usedPrice\":11500,\"priceNote\":\"註明參考通路與行情依據\"}";
 
                 const callGemini = async (model, useSearch) => {
-                    const baseUrl = `https://googleapis.com{model}:generateContent`;
+                    const baseUrl = "https://googleapis.com" + model + ":generateContent";
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 14000);
                     const payload = {
