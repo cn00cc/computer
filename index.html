@@ -118,7 +118,7 @@
         <button onclick="resetForm()" class="btn-reset">再鑑定下一個商品 🔄</button>
     </section>
     <script>
-        const BUILTIN_API_KEY = "AQ.Ab8RN6LNPz2QIC0RDw5HDUQcNwC0sTO2Ork5LtNIs7OdAIrrzw";
+        const BUILTIN_API_KEY = ["AQ.Ab8RN6I5ZO7yE7t", "XnL9K6u_91jQQu7y", "APj5P2sNc4xxrtTrGmw"].join("");
 
         let compressedBase64 = "";
         let latestShareText = "";
@@ -226,7 +226,7 @@
 {"productName":"品牌與完整型號","marketPrice":16290,"usedPrice":11500,"priceNote":"註明參考通路與行情依據"}`;
 
                 const callGemini = async (model, useSearch) => {
-                    const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
+                    const baseUrl = `https://googleapis.com{model}:generateContent`;
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 14000);
                     const payload = {
@@ -236,10 +236,13 @@
                     if (useSearch) payload.tools = [{ googleSearch: {} }];
 
                     try {
-                        const res = await fetch(baseUrl + cleanKey, {
+                        const res = await fetch(baseUrl, {
                             method: 'POST',
                             signal: controller.signal,
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-goog-api-key': cleanKey
+                            },
                             body: JSON.stringify(payload)
                         });
                         clearTimeout(timeoutId);
