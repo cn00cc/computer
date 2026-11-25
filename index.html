@@ -284,4 +284,14 @@
                 setTimeout(() => { btn.innerText = "📋 複製鑑定結果文案（貼群組嘲諷）"; }, 2500);
             }).catch(() => alert("複製失敗，請手動複製：\n\n" + latestShareText));
         }
-
+                function resetForm() {
+            document.getElementById('image-input').value = '';
+            document.getElementById('user-price').value = '';
+            compressedBase64 = '';
+            document.getElementById('image-preview').style.display = 'none';
+            document.getElementById('upload-placeholder').style.display = 'block';
+            document.getElementById('result-card').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
