@@ -198,17 +198,20 @@
                 return;
             }
 
-            document.getElementById('loading-text').innerText = "⚡ AI 秒速辨識型號、台灣市價與二手行情...";
+                        document.getElementById('loading-text').innerText = "🔍 正在即時聯網搜尋台灣最新報價與二手行情...";
             try {
-                const promptText = `台灣電商與二手行情專家(蝦皮/momo/PTT/旋轉)。辨識圖片商品品牌型號，估算台灣「全新最低市價」與「品項良好二手價」(皆為新台幣整數)。只回傳JSON：{"productName":"品牌型號","marketPrice":1200,"usedPrice":800,"priceNote":"簡短行情依據"}`;
-                const models = ["gemini-3.8-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-3-flash-preview"];
+                const promptText = `你是一個精通台灣市場行情的即時比價專家。請先辨識圖片中的商品品牌、完整名稱與型號，並務必使用 Google 搜尋查詢「2026年台灣最新售價」（包含原價屋、欣亞、蝦皮、momo、PChome 售價，以及 PTT HardwareSale/Gamesale、旋轉拍賣二手成交價）。
+請嚴格只回傳以下純 JSON 格式（不要加任何說明文字）：
+{"productName":"品牌與完整型號","marketPrice":12000,"usedPrice":8500,"priceNote":"註明查到的通路最新售價依據"}`;
+
+                const models = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-3.8-flash-lite"];
                 let data = null;
 
                 for (let i = 0; i < models.length; i++) {
                     const model = models[i];
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 4500);
+                    const timeoutId = setTimeout(() => controller.abort(), 9000); // 聯網搜尋需要約 3-6 秒，放寬至 9 秒
 
                     try {
                         const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
@@ -217,17 +220,16 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
+                                tools: [{ googleSearch: {} }], // 關鍵：開啟 Google 搜尋即時查價
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: 160,
-                                    thinkingConfig: { thinkingBudget: 0 },
-                                    responseMimeType: "application/json"
+                                    maxOutputTokens: 300
                                 }
                             })
                         });
                         clearTimeout(timeoutId);
                         const resJson = await response.json();
-                        if (response.ok) {
+                        if (response.ok && resJson.candidates?.[0]?.content?.parts) {
                             data = resJson;
                             break;
                         }
@@ -236,28 +238,34 @@
                     }
 
                     if (i < models.length - 1) {
-                        document.getElementById('loading-text').innerText = `⚡ 秒速切換高速線路 (${i + 2}/${models.length})...`;
+                        document.getElementById('loading-text').innerText = `🔍 切換備援搜尋線路 (${i + 2}/${models.length})...`;
                     }
                 }
 
                 if (!data) {
-                    const fallbackNew = Math.max(1, Math.round(userPrice * 0.72));
-                    const fallbackUsed = Math.max(1, Math.round(fallbackNew * 0.65));
-                    renderResult("一般市售商品（極速備援模式）", fallbackNew, fallbackUsed, "⚠️ 免費線路尖峰壅塞，已啟動秒速備援估價", userPrice);
+                    const fallbackNew = Math.max(1, Math.round(userPrice * 0.85));
+                    const fallbackUsed = Math.max(1, Math.round(fallbackNew * 0.7));
+                    renderResult("一般市售商品（離線備援模式）", fallbackNew, fallbackUsed, "⚠️ 即時搜尋線路暫時壅塞，已啟動備援估價", userPrice);
                     return;
                 }
 
-                const rawText = data.candidates[0].content.parts[0].text;
-                const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
-                const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.8));
-                const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.65));
-                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依台灣常見電商與二手平台估算", userPrice);
+                // 合併所有回傳文字片段並精準擷取 JSON
+                const parts = data.candidates[0].content.parts;
+                const fullText = parts.map(p => p.text || "").join("\n");
+                const jsonMatch = fullText.match(/\{[\s\S]*?\}/);
+                if (!jsonMatch) throw new Error("無法解析比價格式，請再試一次");
+
+                const parsed = JSON.parse(jsonMatch[0]);
+                const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.9));
+                const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.7));
+                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依 2026 台灣即時搜尋行情估算", userPrice);
             } catch (err) {
                 alert(`辨識失敗：${err.message}`);
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('submit-btn').style.display = 'block';
             }
+
         }
         function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
             const diff = userPrice - marketPrice;
