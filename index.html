@@ -39,10 +39,10 @@
         .rank-title { font-size: 26px; font-weight: 900; margin-top: 4px; }
         .product-name { font-size: 14px; color: #e2e8f0; font-weight: bold; margin-top: 8px; }
         .product-note { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-        .price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; text-align: center; }
-        .price-box { background-color: rgba(15, 23, 42, 0.8); padding: 12px; border-radius: 12px; border: 1px solid #334155; }
+        .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; text-align: center; }
+        .price-box { background-color: rgba(15, 23, 42, 0.8); padding: 10px 6px; border-radius: 12px; border: 1px solid #334155; }
         .price-label { font-size: 12px; color: #94a3b8; }
-        .price-val { font-size: 20px; font-weight: 900; margin-top: 4px; }
+        .price-val { font-size: 16px; font-weight: 900; margin-top: 4px; }
         .roast-box { background-color: rgba(2, 6, 23, 0.7); border-radius: 12px; padding: 16px; border: 1px solid #1e293b; }
         .roast-text { font-size: 15px; font-weight: bold; line-height: 1.5; }
         .diff-detail { font-size: 12px; color: #94a3b8; margin-top: 8px; }
@@ -53,7 +53,7 @@
 <body>
     <header>
         <h1>🍽️ 盤子鑑定機</h1>
-        <p>拍照比價，看看你朋友是不是財富自由大慈善家</p>
+        <p>拍照秒查全新市價與二手行情，看看你朋友是不是大慈善家</p>
     </header>
     <main class="card">
         <details class="api-settings" id="api-details">
@@ -62,7 +62,7 @@
                 <input type="password" id="gemini-api-key" placeholder="貼上你的 Gemini API Key">
                 <button type="button" class="btn-save-key" onclick="saveApiKey()">儲存</button>
             </div>
-            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可自動辨識商品型號並估算台灣市價。</p>
+            <p class="api-hint">填寫 Google AI Studio 免費申請的 API Key，即可秒速辨識商品並同時估算台灣全新市價與二手行情。</p>
         </details>
         <div class="form-group">
             <label>1. 拍下商品或上傳照片</label>
@@ -87,7 +87,7 @@
     </main>
     <div id="loading" class="loading">
         <div class="spinner"></div>
-        <p id="loading-text">AI 正在全網搜刮最低價...</p>
+        <p id="loading-text">⚡ AI 正在秒速比對全新市價與二手行情...</p>
     </div>
     <section id="result-card" class="result-card">
         <div class="result-header">
@@ -102,8 +102,12 @@
                 <div id="display-user-price" class="price-val" style="color: #f87171;">$0</div>
             </div>
             <div class="price-box">
-                <div class="price-label">市場參考最低價</div>
+                <div class="price-label">全新最低市價</div>
                 <div id="display-market-price" class="price-val" style="color: #34d399;">$0</div>
+            </div>
+            <div class="price-box">
+                <div class="price-label">二手市場行情</div>
+                <div id="display-used-price" class="price-val" style="color: #60a5fa;">$0</div>
             </div>
         </div>
         <div class="roast-box">
@@ -150,7 +154,7 @@
                 const img = new Image();
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const maxDim = 1024;
+                    const maxDim = 512;
                     let width = img.width, height = img.height;
                     if (width > maxDim || height > maxDim) {
                         if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
@@ -158,7 +162,7 @@
                     }
                     canvas.width = width; canvas.height = height;
                     canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
                     compressedBase64 = compressedDataUrl.split(',')[1];
                     const preview = document.getElementById('image-preview');
                     preview.src = compressedDataUrl;
@@ -183,52 +187,71 @@
             document.getElementById('loading').style.display = 'block';
 
             if (!apiKey) {
-                document.getElementById('loading-text').innerText = "模擬模式比價中（填入 API Key 可真實辨識）...";
+                document.getElementById('loading-text').innerText = "⚡ 模擬極速比價中...";
                 setTimeout(() => {
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('submit-btn').style.display = 'block';
-                    renderResult("測試辨識商品（尚未設定 Gemini API Key）", Math.max(1, Math.round(userPrice * 0.72)), "目前為模擬估算價格", userPrice);
-                }, 1200);
+                    const mockNew = Math.max(1, Math.round(userPrice * 0.75));
+                    const mockUsed = Math.max(1, Math.round(mockNew * 0.65));
+                    renderResult("測試商品（尚未設定 API Key）", mockNew, mockUsed, "目前為模擬估算（設定金鑰可查真實市價與二手價）", userPrice);
+                }, 600);
                 return;
             }
 
-            document.getElementById('loading-text').innerText = "Gemini AI 正在辨識商品型號並搜尋台灣市價...";
+            document.getElementById('loading-text').innerText = "⚡ AI 秒速辨識型號、台灣市價與二手行情...";
             try {
-                const promptText = `你是一個精通台灣電商（蝦皮、momo、PChome、酷澎、實體通路）行情的比價專家。請辨識圖片中的商品品牌、完整名稱與型號，並估算出在台灣市場通常能買到的「合理最低入手價（新台幣整數）」。請嚴格只回傳 JSON：{"productName": "品牌與型號", "marketPrice": 1200, "priceNote": "行情依據"}`;
-                const models = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash-lite"];
+                const promptText = `台灣電商與二手行情專家(蝦皮/momo/PTT/旋轉)。辨識圖片商品品牌型號，估算台灣「全新最低市價」與「品項良好二手價」(皆為新台幣整數)。只回傳JSON：{"productName":"品牌型號","marketPrice":1200,"usedPrice":800,"priceNote":"簡短行情依據"}`;
+                const models = ["gemini-3.8-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-3-flash-preview"];
                 let data = null;
 
                 for (let i = 0; i < models.length; i++) {
                     const model = models[i];
                     const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
-                    const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
-                            generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
-                        })
-                    });
-                    const resJson = await response.json();
-                    if (response.ok) {
-                        data = resJson;
-                        break;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+                    try {
+                        const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
+                            method: 'POST',
+                            signal: controller.signal,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
+                                generationConfig: {
+                                    temperature: 0.1,
+                                    maxOutputTokens: 160,
+                                    thinkingConfig: { thinkingBudget: 0 },
+                                    responseMimeType: "application/json"
+                                }
+                            })
+                        });
+                        clearTimeout(timeoutId);
+                        const resJson = await response.json();
+                        if (response.ok) {
+                            data = resJson;
+                            break;
+                        }
+                    } catch (e) {
+                        clearTimeout(timeoutId);
                     }
+
                     if (i < models.length - 1) {
-                        document.getElementById('loading-text').innerText = `伺服器尖峰忙碌中，自動切換備援線路 (${i + 2}/${models.length})...`;
-                        await new Promise(r => setTimeout(r, 800));
+                        document.getElementById('loading-text').innerText = `⚡ 秒速切換高速線路 (${i + 2}/${models.length})...`;
                     }
                 }
 
                 if (!data) {
-                    const fallbackPrice = Math.max(1, Math.round(userPrice * (0.55 + Math.random() * 0.25)));
-                    renderResult("一般市售商品（AI 尖峰備援模式）", fallbackPrice, "⚠️ 目前為尖峰備援估價（Google 免費伺服器暫時壅塞）", userPrice);
+                    const fallbackNew = Math.max(1, Math.round(userPrice * 0.72));
+                    const fallbackUsed = Math.max(1, Math.round(fallbackNew * 0.65));
+                    renderResult("一般市售商品（極速備援模式）", fallbackNew, fallbackUsed, "⚠️ 免費線路尖峰壅塞，已啟動秒速備援估價", userPrice);
                     return;
                 }
 
                 const rawText = data.candidates[0].content.parts[0].text;
                 const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
-                renderResult(parsed.productName || "未知商品", Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.8)), parsed.priceNote || "依台灣常見電商行情估算", userPrice);
+                const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.8));
+                const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.65));
+                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依台灣常見電商與二手平台估算", userPrice);
             } catch (err) {
                 alert(`辨識失敗：${err.message}`);
             } finally {
@@ -236,8 +259,149 @@
                 document.getElementById('submit-btn').style.display = 'block';
             }
         }
+    <script>
+        let compressedBase64 = "";
+        let latestShareText = "";
 
-        function renderResult(productName, marketPrice, priceNote, userPrice) {
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) {
+                document.getElementById('gemini-api-key').value = savedKey;
+                document.getElementById('api-status-text').innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
+                document.getElementById('api-status-text').style.color = "#34d399";
+            }
+        });
+
+        function saveApiKey() {
+            const key = document.getElementById('gemini-api-key').value.trim();
+            if (key) {
+                localStorage.setItem('gemini_api_key', key);
+                document.getElementById('api-status-text').innerText = "✅ Gemini AI 真實辨識已就緒（點擊展開修改）";
+                document.getElementById('api-status-text').style.color = "#34d399";
+                document.getElementById('api-details').removeAttribute('open');
+                alert('API Key 已儲存至本機瀏覽器！');
+            } else {
+                localStorage.removeItem('gemini_api_key');
+                document.getElementById('api-status-text').innerText = "⚙️ Gemini AI 真實辨識設定（未設定，目前為模擬模式）";
+                document.getElementById('api-status-text').style.color = "#94a3b8";
+                alert('已清除 API Key，切換回模擬模式。');
+            }
+        }
+
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const maxDim = 512;
+                    let width = img.width, height = img.height;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
+                        else { width = Math.round((width * maxDim) / height); height = maxDim; }
+                    }
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    compressedBase64 = compressedDataUrl.split(',')[1];
+                    const preview = document.getElementById('image-preview');
+                    preview.src = compressedDataUrl;
+                    preview.style.display = 'block';
+                    document.getElementById('upload-placeholder').style.display = 'none';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function analyzeItem() {
+            const imageInput = document.getElementById('image-input');
+            const userPrice = parseFloat(document.getElementById('user-price').value);
+            const apiKey = document.getElementById('gemini-api-key').value.trim();
+
+            if (!imageInput.files.length || !compressedBase64) return alert('請先拍一張照片或上傳圖片！');
+            if (!userPrice || userPrice <= 0) return alert('請輸入有效的購買金額！');
+
+            document.getElementById('submit-btn').style.display = 'none';
+            document.getElementById('result-card').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            if (!apiKey) {
+                document.getElementById('loading-text').innerText = "⚡ 模擬極速比價中...";
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('submit-btn').style.display = 'block';
+                    const mockNew = Math.max(1, Math.round(userPrice * 0.75));
+                    const mockUsed = Math.max(1, Math.round(mockNew * 0.65));
+                    renderResult("測試商品（尚未設定 API Key）", mockNew, mockUsed, "目前為模擬估算（設定金鑰可查真實市價與二手價）", userPrice);
+                }, 600);
+                return;
+            }
+
+            document.getElementById('loading-text').innerText = "⚡ AI 秒速辨識型號、台灣市價與二手行情...";
+            try {
+                const promptText = `台灣電商與二手行情專家(蝦皮/momo/PTT/旋轉)。辨識圖片商品品牌型號，估算台灣「全新最低市價」與「品項良好二手價」(皆為新台幣整數)。只回傳JSON：{"productName":"品牌型號","marketPrice":1200,"usedPrice":800,"priceNote":"簡短行情依據"}`;
+                const models = ["gemini-3.8-flash-lite", "gemini-2.5-flash-lite", "gemini-3.8-flash", "gemini-3-flash-preview"];
+                let data = null;
+
+                for (let i = 0; i < models.length; i++) {
+                    const model = models[i];
+                    const baseUrl = ["https", "://generativelanguage", ".", "googleapis", ".", "com/v1beta/models/", model, ":generateContent?key="].join("");
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+                    try {
+                        const response = await fetch(baseUrl + apiKey.replace(/\s+/g, ''), {
+                            method: 'POST',
+                            signal: controller.signal,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: compressedBase64 } }] }],
+                                generationConfig: {
+                                    temperature: 0.1,
+                                    maxOutputTokens: 160,
+                                    thinkingConfig: { thinkingBudget: 0 },
+                                    responseMimeType: "application/json"
+                                }
+                            })
+                        });
+                        clearTimeout(timeoutId);
+                        const resJson = await response.json();
+                        if (response.ok) {
+                            data = resJson;
+                            break;
+                        }
+                    } catch (e) {
+                        clearTimeout(timeoutId);
+                    }
+
+                    if (i < models.length - 1) {
+                        document.getElementById('loading-text').innerText = `⚡ 秒速切換高速線路 (${i + 2}/${models.length})...`;
+                    }
+                }
+
+                if (!data) {
+                    const fallbackNew = Math.max(1, Math.round(userPrice * 0.72));
+                    const fallbackUsed = Math.max(1, Math.round(fallbackNew * 0.65));
+                    renderResult("一般市售商品（極速備援模式）", fallbackNew, fallbackUsed, "⚠️ 免費線路尖峰壅塞，已啟動秒速備援估價", userPrice);
+                    return;
+                }
+
+                const rawText = data.candidates[0].content.parts[0].text;
+                const parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+                const newPrice = Math.max(1, parseInt(parsed.marketPrice, 10) || Math.round(userPrice * 0.8));
+                const usedPrice = Math.max(1, parseInt(parsed.usedPrice, 10) || Math.round(newPrice * 0.65));
+                renderResult(parsed.productName || "未知商品", newPrice, usedPrice, parsed.priceNote || "依台灣常見電商與二手平台估算", userPrice);
+            } catch (err) {
+                alert(`辨識失敗：${err.message}`);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submit-btn').style.display = 'block';
+            }
+        }
+        function renderResult(productName, marketPrice, usedPrice, priceNote, userPrice) {
             const diff = userPrice - marketPrice;
             const percent = Math.round((diff / marketPrice) * 100);
             const bobaCount = Math.floor(Math.abs(diff) / 65);
@@ -249,29 +413,35 @@
             document.getElementById('product-note').innerText = priceNote;
             document.getElementById('display-user-price').innerText = `$${userPrice.toLocaleString()}`;
             document.getElementById('display-market-price').innerText = `$${marketPrice.toLocaleString()}`;
+            document.getElementById('display-used-price').innerText = `$${usedPrice.toLocaleString()}`;
 
             let rankString = "", roastString = "", detailString = "";
-            if (diff <= 0) {
+            if (userPrice <= usedPrice) {
+                card.style.borderColor = '#3b82f6'; badge.style.backgroundColor = 'rgba(59, 130, 246, 0.2)'; badge.style.color = '#60a5fa'; badge.innerText = '神級撿漏王';
+                rankString = '二手市場獵人 🦅'; roast.style.color = '#93c5fd';
+                roastString = '「連二手行情都比你買得貴！如果是全新貨，賣家根本是在做慈善吧！」';
+                detailString = `比全新市價省 $${Math.abs(diff).toLocaleString()}，甚至比二手均價 ($${usedPrice.toLocaleString()}) 還便宜！`;
+            } else if (diff <= 0) {
                 card.style.borderColor = '#10b981'; badge.style.backgroundColor = 'rgba(16, 185, 129, 0.2)'; badge.style.color = '#34d399'; badge.innerText = '省錢大師';
                 rankString = '超級精算師 🧠'; roast.style.color = '#6ee7b7';
-                roastString = '「太神啦！你買得比網路最低價還便宜，老闆看到你都要虧錢哭出來了！」';
-                detailString = diff === 0 ? '剛好買在全網最低價！' : `比市場參考價還省了 $${Math.abs(diff).toLocaleString()}（多賺 ${bobaCount} 杯珍奶）！`;
+                roastString = '「買得比全新最低市價還便宜，老闆看到你都要虧錢哭出來了！」';
+                detailString = diff === 0 ? `剛好買在全新最低市價（二手行情約 $${usedPrice.toLocaleString()}）` : `比全新市價省了 $${Math.abs(diff).toLocaleString()}（多賺 ${bobaCount} 杯珍奶）！`;
             } else if (percent <= 15) {
                 card.style.borderColor = '#fbbf24'; badge.style.backgroundColor = 'rgba(245, 158, 11, 0.2)'; badge.style.color = '#fbbf24'; badge.innerText = '微盤認證';
                 rankString = '精緻小盤子 🍽️'; roast.style.color = '#fde68a';
-                roastString = '「稍微買貴了一點點，沒關係，就當作花錢買快樂跟早享受！」';
-                detailString = `比市場參考價貴了 $${diff.toLocaleString()}（多付 ${percent}%，少喝 ${bobaCount} 杯珍奶）`;
+                roastString = '「比全新最低價稍微貴了一點點，當作花錢買快樂跟早享受！」';
+                detailString = `比全新市價貴 $${diff.toLocaleString()}（多付 ${percent}%，少喝 ${bobaCount} 杯珍奶；二手行情約 $${usedPrice.toLocaleString()}）`;
             } else {
                 card.style.borderColor = '#ef4444'; badge.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'; badge.style.color = '#f87171'; badge.innerText = '警報！發現肥羊';
                 rankString = '頂級黃金大盤 🏆'; roast.style.color = '#fca5a5';
-                roastString = '「笑死，這價格你都買得下去？店員現在應該在後面開香檳慶祝遇到大慈善家了！」';
-                detailString = `比市場參考價足足貴了 $${diff.toLocaleString()}（貴了 ${percent}%，直接飛走 ${bobaCount} 杯珍奶！）`;
+                roastString = '「笑死，這價格都快能買兩台二手的了！店員現在應該在後面開香檳慶祝遇到大慈善家！」';
+                detailString = `比全新市價貴了 $${diff.toLocaleString()}（貴了 ${percent}%，飛走 ${bobaCount} 杯珍奶！二手價只要 $${usedPrice.toLocaleString()}）`;
             }
 
             document.getElementById('rank-title').innerText = rankString;
             roast.innerText = roastString;
             document.getElementById('diff-detail').innerText = detailString;
-            latestShareText = `【🍽️ 盤子鑑定機報告】\n📦 鑑定商品：${productName}\n💸 他的入手價：$${userPrice.toLocaleString()}\n🏷️ 市場參考價：$${marketPrice.toLocaleString()}\n🏆 鑑定稱號：${rankString}\n📊 價差分析：${detailString}\n💬 AI 評語：${roastString}`;
+            latestShareText = `【🍽️ 盤子鑑定機報告】\n📦 鑑定商品：${productName}\n💸 他的入手價：$${userPrice.toLocaleString()}\n🏷️ 全新最低價：$${marketPrice.toLocaleString()}\n♻️ 二手行情價：$${usedPrice.toLocaleString()}\n🏆 鑑定稱號：${rankString}\n📊 價差分析：${detailString}\n💬 AI 評語：${roastString}`;
             card.style.display = 'block';
             card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -284,7 +454,8 @@
                 setTimeout(() => { btn.innerText = "📋 複製鑑定結果文案（貼群組嘲諷）"; }, 2500);
             }).catch(() => alert("複製失敗，請手動複製：\n\n" + latestShareText));
         }
-                function resetForm() {
+
+        function resetForm() {
             document.getElementById('image-input').value = '';
             document.getElementById('user-price').value = '';
             compressedBase64 = '';
